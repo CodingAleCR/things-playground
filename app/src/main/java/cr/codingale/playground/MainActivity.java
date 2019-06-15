@@ -1,7 +1,7 @@
 package cr.codingale.playground;
 
 import android.app.Activity;
-import android.support.v7.app.AppCompatActivity;
+import android.os.Handler;
 import android.os.Bundle;
 import android.util.Log;
 import android.widget.TextView;
@@ -16,8 +16,13 @@ public class MainActivity extends Activity {
     public static final String TAG = "MainActivity";
     private TextView tvInformation;
 
+    private static final int LED_INTERVAL = 1000;
     private static final String BTN_PIN = "BCM21";
+    private static final String LED_PIN = "BCM6";
     private Gpio btnGpio;
+    private Gpio ledGpio;
+
+    private Handler handler = new Handler();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -27,7 +32,8 @@ public class MainActivity extends Activity {
         tvInformation = findViewById(R.id.tv_information);
 
         showGPIOs();
-        setGpioBtns();
+        setButton();
+        setLed();
     }
 
     private void showGPIOs() {
@@ -52,13 +58,36 @@ public class MainActivity extends Activity {
         }
     };
 
-    private void setGpioBtns() {
+    private void setButton() {
         PeripheralManager manager = PeripheralManager.getInstance();
         try {
             btnGpio = manager.openGpio(BTN_PIN);
             btnGpio.setDirection(Gpio.DIRECTION_IN);
             btnGpio.setEdgeTriggerType(Gpio.EDGE_BOTH);
             btnGpio.registerGpioCallback(callback);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private Runnable runnable = new Runnable() {
+        @Override
+        public void run() {
+            try {
+                ledGpio.setValue(!ledGpio.getValue());
+                handler.postDelayed(runnable, LED_INTERVAL);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    };
+
+    private void setLed() {
+        PeripheralManager manager = PeripheralManager.getInstance();
+        try {
+            ledGpio = manager.openGpio(LED_PIN);
+            ledGpio.setDirection(Gpio.DIRECTION_OUT_INITIALLY_LOW);
+            handler.post(runnable);
         } catch (IOException e) {
             e.printStackTrace();
         }

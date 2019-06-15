@@ -24,6 +24,8 @@ public class MainActivity extends Activity {
 
     private Handler handler = new Handler();
 
+    private boolean isButtonPressed = false;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -51,6 +53,7 @@ public class MainActivity extends Activity {
         public boolean onGpioEdge(Gpio gpio) {
             try {
                 Log.e(TAG, "onGpioEdge: Button change " + Boolean.toString(gpio.getValue()));
+                isButtonPressed = !gpio.getValue();
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -74,7 +77,11 @@ public class MainActivity extends Activity {
         @Override
         public void run() {
             try {
-                ledGpio.setValue(!ledGpio.getValue());
+                if (!isButtonPressed) {
+                    ledGpio.setValue(!ledGpio.getValue());
+                } else {
+                    ledGpio.setValue(true);
+                }
                 handler.postDelayed(runnable, LED_INTERVAL);
             } catch (IOException e) {
                 e.printStackTrace();

@@ -8,231 +8,69 @@ import android.widget.TextView;
 
 import com.google.android.things.pio.Gpio;
 import com.google.android.things.pio.GpioCallback;
+import com.google.android.things.pio.I2cDevice;
 import com.google.android.things.pio.PeripheralManager;
 import com.google.android.things.pio.Pwm;
 
 import java.io.IOException;
+import java.util.List;
 
 public class MainActivity extends Activity {
-    public static final String TAG = "MainActivity";
-    private TextView tvInformation;
-
-    private static final int LED_INTERVAL = 1000;
-    private static final int PORCENTAGE_LED_PWM = 5;
-    private static final String BTN_PIN = "BCM21";
-    private static final String LED_PIN = "BCM6";
-    private static final String RED_LED_RGB_PIN = "BCM5";
-    private static final String BLUE_LED_RGB_PIN = "BCM19";
-    private static final String GREEN_LED_RGB_PIN = "BCM23";
-    private static final String LED_PWM_PIN = "PWM0";
-    private Gpio btnGpio;
-    private Gpio ledGpio;
-    private Pwm ledPWm;
-    private Gpio redLedRGBGpio;
-    private Gpio greenLedRGBGpio;
-    private Gpio blueLedRGBGpio;
-
-    private Handler handler = new Handler();
-
-    private boolean isButtonPressed = false;
-    private int pwmLedPercentage = 20;
-    private int ledRGBStatus = 1;
+    public static final String TAG = "Android Things Playground:";
+    private static final byte OUT_ACTIVE = 0x40;
+    private static final byte AUTOINCREMENT = 0X04;
+    private static final byte IN_0 = 0X00;
+    private static final byte IN_1 = 0x01;
+    private static final byte IN_2 = 0x02;
+    private static final byte IN_3 = 0x03;
+    private static String IN_I2C_NAME = "I2C1";
+    private static final int IN_I2C_DIRECTION = 0x48;
+    private I2cDevice i2c;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        tvInformation = findViewById(R.id.tv_information);
 
-        showGPIOs();
-        setButton();
-        setLed();
-        setPwmLed();
-        setLedRGB();
-
-        // Start 1 second repeat handler.
-        handler.post(runnable);
+        List<String> devices = PeripheralManager.getInstance().getI2cBusList();
+        Log.d(TAG, "I2C Devices: " + devices.toString());
+        setupI2C();
     }
 
-    private void showGPIOs() {
-        PeripheralManager manager = PeripheralManager.getInstance();
-        StringBuilder ios = new StringBuilder();
-        for (String io : manager.getGpioList()) {
-            ios.append(io).append("\n");
-        }
+    private void setupI2C() {
+        try {
+            i2c = PeripheralManager.getInstance().openI2cDevice(IN_I2C_NAME, IN_I2C_DIRECTION);
 
-        tvInformation.setText(ios.toString());
-    }
+            byte[] config = new byte[2];
+            config[0] = OUT_ACTIVE + AUTOINCREMENT;
+            config[1] = (byte) 0x80;
+            i2c.write(config, config.length);
 
-    private GpioCallback callback = new GpioCallback() {
-        @Override
-        public boolean onGpioEdge(Gpio gpio) {
-            try {
-                Log.e(TAG, "onGpioEdge: Button change " + Boolean.toString(gpio.getValue()));
-                isButtonPressed = !gpio.getValue();
-            } catch (IOException e) {
-                e.printStackTrace();
+            byte[] buffer = new byte[5];
+            i2c.read(buffer, buffer.length);
+
+
+            String s = "";
+            for (int i = 0; i < buffer.length; i++) {
+                s += " byte"+i+": "+ (buffer[i]&0xFF);
+
             }
-            return true;
-        }
-    };
-
-    private void setButton() {
-        PeripheralManager manager = PeripheralManager.getInstance();
-        try {
-            btnGpio = manager.openGpio(BTN_PIN);
-            btnGpio.setDirection(Gpio.DIRECTION_IN);
-            btnGpio.setEdgeTriggerType(Gpio.EDGE_BOTH);
-            btnGpio.registerGpioCallback(callback);
+            Log.d(TAG, s);
         } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-
-    private Runnable runnable = new Runnable() {
-        @Override
-        public void run() {
-            try {
-                refreshLedGpio();
-                refreshLedPwm();
-                refreshLedRGB();
-                handler.postDelayed(runnable, LED_INTERVAL);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-    };
-
-    private void refreshLedGpio() throws IOException {
-        if (!isButtonPressed) {
-            ledGpio.setValue(!ledGpio.getValue());
-        } else {
-            ledGpio.setValue(true);
-        }
-    }
-
-    private void setLed() {
-        PeripheralManager manager = PeripheralManager.getInstance();
-        try {
-            ledGpio = manager.openGpio(LED_PIN);
-            ledGpio.setDirection(Gpio.DIRECTION_OUT_INITIALLY_LOW);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-
-    private void refreshLedRGB() throws IOException {
-        switch (ledRGBStatus) {
-            case 1:
-                redLedRGBGpio.setValue(true);
-                greenLedRGBGpio.setValue(false);
-                blueLedRGBGpio.setValue(false);
-                break;
-            case 2:
-                redLedRGBGpio.setValue(false);
-                greenLedRGBGpio.setValue(true);
-                blueLedRGBGpio.setValue(false);
-                break;
-            case 3:
-                redLedRGBGpio.setValue(false);
-                greenLedRGBGpio.setValue(false);
-                blueLedRGBGpio.setValue(true);
-                break;
-            case 4:
-                redLedRGBGpio.setValue(true);
-                greenLedRGBGpio.setValue(true);
-                blueLedRGBGpio.setValue(false);
-                break;
-            case 5:
-                redLedRGBGpio.setValue(false);
-                greenLedRGBGpio.setValue(true);
-                blueLedRGBGpio.setValue(true);
-                break;
-            case 6:
-                redLedRGBGpio.setValue(true);
-                greenLedRGBGpio.setValue(false);
-                blueLedRGBGpio.setValue(true);
-                break;
-            case 7:
-                redLedRGBGpio.setValue(true);
-                greenLedRGBGpio.setValue(true);
-                blueLedRGBGpio.setValue(true);
-                break;
-            case 8:
-                redLedRGBGpio.setValue(false);
-                greenLedRGBGpio.setValue(false);
-                blueLedRGBGpio.setValue(false);
-                break;
-        }
-
-        if (ledRGBStatus < 8) {
-            ledRGBStatus += 1;
-        } else {
-            ledRGBStatus = 1;
-        }
-    }
-
-    private void setLedRGB() {
-        PeripheralManager manager = PeripheralManager.getInstance();
-        try {
-            redLedRGBGpio = manager.openGpio(RED_LED_RGB_PIN);
-            redLedRGBGpio.setDirection(Gpio.DIRECTION_OUT_INITIALLY_LOW);
-            blueLedRGBGpio = manager.openGpio(BLUE_LED_RGB_PIN);
-            blueLedRGBGpio.setDirection(Gpio.DIRECTION_OUT_INITIALLY_LOW);
-            greenLedRGBGpio = manager.openGpio(GREEN_LED_RGB_PIN);
-            greenLedRGBGpio.setDirection(Gpio.DIRECTION_OUT_INITIALLY_LOW);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-
-    private void refreshLedPwm() throws IOException {
-        if (pwmLedPercentage <= 80) {
-            pwmLedPercentage += 20;
-        } else {
-            pwmLedPercentage = 0;
-        }
-        ledPWm.setPwmDutyCycle(pwmLedPercentage);
-    }
-
-    private void setPwmLed() {
-        PeripheralManager manager = PeripheralManager.getInstance();
-        try {
-            ledPWm = manager.openPwm(LED_PWM_PIN);
-            ledPWm.setPwmFrequencyHz(120);
-            ledPWm.setPwmDutyCycle(PORCENTAGE_LED_PWM);
-            ledPWm.setEnabled(true);
-        } catch (IOException e) {
-            e.printStackTrace();
+            Log.e(TAG, "setupI2C:", e);
         }
     }
 
     @Override
     protected void onDestroy() {
-        if (btnGpio != null) {
-            btnGpio.unregisterGpioCallback(callback);
-            try {
-                btnGpio.close();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+        try {
+            i2c.close();
+            i2c = null;
+        } catch (IOException e) {
+            e.printStackTrace();
         }
-        if (ledGpio != null) {
-            try {
-                ledGpio.close();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-        if (ledPWm != null) {
-            try {
-                ledPWm.close();
-                ledPWm = null;
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
+
         super.onDestroy();
     }
 }

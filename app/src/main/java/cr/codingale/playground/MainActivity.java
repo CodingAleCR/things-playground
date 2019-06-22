@@ -4,121 +4,116 @@ import android.app.Activity;
 import android.os.Bundle;
 import android.os.Handler;
 import android.util.Log;
+import android.view.View;
+import android.widget.Button;
+import android.widget.TextView;
 
 import com.google.android.things.pio.Gpio;
 import com.google.android.things.pio.PeripheralManager;
+import com.google.android.things.pio.UartDevice;
 
 import java.io.IOException;
+import java.util.List;
+
+import static cr.codingale.playground.MainActivity.TAG;
 
 public class MainActivity extends Activity {
     public static final String TAG = "Android Things Playground:";
-    private static final String ECHO_PIN_NAME = "BCM20";
-    private static final String TRIGGER_PIN_NAME = "BCM16";
-    private static int READ_INTERVAL = 3000;
-    private Gpio mEcho;
-    private Gpio mTrigger;
-    private Handler handler = new Handler();
-
-    private Runnable runnable = new Runnable() {
-        @Override
-        public void run() {
-            try {
-                readDistance();
-                handler.postDelayed(this, READ_INTERVAL);
-            } catch (IOException e) {
-                e.printStackTrace();
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        }
-    };
+    private ArduinoUart mArduino;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
 
-        PeripheralManager manager = PeripheralManager.getInstance();
+        Log.i(TAG, "Available UART devices: " + ArduinoUart.availables());
+        mArduino = new ArduinoUart("UART0", 115200);
+
+        sendCommand("H");
+        sendCommand("D");
+    }
+
+    private void sendCommand(String command) {
+        String action = "Sending '" + command + "' command...";
+        Log.d(TAG, action);
+
+        mArduino.write(command);
         try {
-            mEcho = manager.openGpio(ECHO_PIN_NAME);
-            mEcho.setDirection(Gpio.DIRECTION_IN);
-            mEcho.setEdgeTriggerType(Gpio.EDGE_BOTH);
-            mEcho.setActiveType(Gpio.ACTIVE_HIGH);
-
-            mTrigger = manager.openGpio(TRIGGER_PIN_NAME);
-            mTrigger.setDirection(Gpio.DIRECTION_OUT_INITIALLY_LOW);
-
-            handler.post(runnable);
-        } catch (IOException e) {
+            Thread.sleep(5000);
+        } catch (InterruptedException e) {
             e.printStackTrace();
         }
+
+        String s = mArduino.read();
+        String message = "Arduino's response: " + s;
+
+        Log.d(TAG, message);
+
     }
 
-    int doSomething;
-
-    protected void readDistance() throws IOException, InterruptedException {
-        // Just to be sure, set the trigger first to false
-        mTrigger.setValue(false);
-        Thread.sleep(0, 2000);
-
-        // Hold the trigger pin HIGH for at least 10 us
-        mTrigger.setValue(true);
-        Thread.sleep(0, 10000); //10 microsec
-
-        // Reset the trigger pin
-        mTrigger.setValue(false);
-
-        // Wait for pulse on ECHO pin
-        while (!mEcho.getValue()) {
-            //long t1 = System.nanoTime();
-            //Log.d(TAG, "Echo has not arrived...");
-
-            // keep the while loop busy
-            doSomething = 0;
-
-            //long t2 = System.nanoTime();
-            //Log.d(TAG, "diff 1: " + (t2-t1));
-        }
-        long time1 = System.nanoTime();
-        Log.i(TAG, "Echo ARRIVED!");
-
-        // Wait for the end of the pulse on the ECHO pin
-        while (mEcho.getValue()) {
-            //long t1 = System.nanoTime();
-            //Log.d(TAG, "Echo is still coming...");
-
-            // keep the while loop busy
-            doSomething = 1;
-
-            //long t2 = System.nanoTime();
-            //Log.d(TAG, "diff 2: " + (t2-t1));
-        }
-        long time2 = System.nanoTime();
-        Log.i(TAG, "Echo ENDED!");
-
-        // Measure how long the echo pin was held high (pulse width)
-        long pulseWidth = time2 - time1;
-
-        // Calculate distance in centimeters. The constants
-        // are coming from the datasheet, and calculated from the assumed speed
-        // of sound in air at sea level (~340 m/s).
-        double distance = (pulseWidth / 1000.0) / 58.23; //cm
-
-        // or we could calculate it withe the speed of the sound:
-        //double distance = (pulseWidth / 1000000000.0) * 340.0 / 2.0 * 100.0;
-
-        Log.i(TAG, "distance: " + distance + " cm");
-    }
 
     @Override
     protected void onDestroy() {
+        mArduino.close();
+        mArduino=null;
+        super.onDestroy();
+    }
+}
+
+class ArduinoUart {
+    private UartDevice uart;
+
+    public ArduinoUart(String name, int baudrate) {
         try {
-            mEcho.close();
-            mTrigger.close();
+            uart = PeripheralManager.getInstance().openUartDevice(name);
+            uart.setBaudrate(baudrate);
+            uart.setDataSize(8);
+            uart.setParity(UartDevice.PARITY_NONE);
+            uart.setStopBits(1);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void write(String s) {
+        try {
+            int writes = uart.write(s.getBytes(), s.length());
+            Log.d(TAG, writes + " bytes written in UART");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public String read() {
+        String s = "";
+        int len;
+        final int maxCount = 8;
+        byte[] buffer = new byte[maxCount];
+        try {
+            do {
+                len = uart.read(buffer, buffer.length);
+                for (int i = 0; i < len; i++) {
+                    s += (char) buffer[i];
+                }
+            } while (len > 0);
         } catch (IOException e) {
             e.printStackTrace();
         }
 
-        super.onDestroy();
+        return s;
+    }
+
+    public void close() {
+        if (uart != null) {
+            try {
+                uart.close();
+                uart = null;
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    static public List<String> availables() {
+        return PeripheralManager.getInstance().getUartDeviceList();
     }
 }
